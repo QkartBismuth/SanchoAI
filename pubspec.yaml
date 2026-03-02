@@ -26,6 +26,9 @@ dependencies:
   llama_flutter_android: ^0.1.1
   dynamic_color: ^1.7.0
   google_fonts: ^6.2.1
+  doc_text_extractor: ^2.1.0
+  docx_creator: ^1.1.6
+  toon_formater: ^1.0.2
 
 dev_dependencies:
   flutter_test:

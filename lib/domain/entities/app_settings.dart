@@ -11,6 +11,8 @@ class AppSettings {
   int repeatLastN;
   String theme;
   String language;
+  String chatTemplate;
+  bool autoDetectTemplate;
 
   AppSettings({
     this.modelPath = '',
@@ -25,6 +27,8 @@ class AppSettings {
     this.repeatLastN = 64,
     this.theme = 'system',
     this.language = 'en',
+    this.chatTemplate = 'none',
+    this.autoDetectTemplate = true,
   });
 
   Map<String, dynamic> toJson() => {
@@ -40,6 +44,8 @@ class AppSettings {
     'repeatLastN': repeatLastN,
     'theme': theme,
     'language': language,
+    'chatTemplate': chatTemplate,
+    'autoDetectTemplate': autoDetectTemplate,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -55,6 +61,8 @@ class AppSettings {
     repeatLastN: json['repeatLastN'] ?? 64,
     theme: json['theme'] ?? 'system',
     language: json['language'] ?? 'en',
+    chatTemplate: json['chatTemplate'] ?? 'none',
+    autoDetectTemplate: json['autoDetectTemplate'] ?? true,
   );
 
   AppSettings copyWith({
@@ -70,6 +78,8 @@ class AppSettings {
     int? repeatLastN,
     String? theme,
     String? language,
+    String? chatTemplate,
+    bool? autoDetectTemplate,
   }) => AppSettings(
     modelPath: modelPath ?? this.modelPath,
     mmprojPath: mmprojPath ?? this.mmprojPath,
@@ -83,5 +93,7 @@ class AppSettings {
     repeatLastN: repeatLastN ?? this.repeatLastN,
     theme: theme ?? this.theme,
     language: language ?? this.language,
+    chatTemplate: chatTemplate ?? this.chatTemplate,
+    autoDetectTemplate: autoDetectTemplate ?? this.autoDetectTemplate,
   );
 }

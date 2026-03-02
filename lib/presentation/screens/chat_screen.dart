@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:file_picker/file_picker.dart';
 import '../providers/history_provider.dart';
 import '../providers/model_provider.dart';
 import '../providers/settings_provider.dart';
 import '../../domain/entities/model_state.dart';
+import '../../data/datasources/llama_service.dart';
+import '../../data/datasources/document_service.dart';
+import '../../data/datasources/document_generator.dart';
 import '../widgets/status_indicator.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -19,14 +23,126 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _documentService = DocumentService();
+  final _documentGenerator = DocumentGenerator();
   bool _isGenerating = false;
+  bool _isLoadingDocument = false;
   String _currentResponse = '';
+  String? _lastConversationId;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastConversationId = ref.read(historyProvider).currentConversationId;
+  }
 
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDocument() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'docx', 'txt'],
+      );
+      
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        if (file.path != null && file.path!.isNotEmpty) {
+          setState(() => _isLoadingDocument = true);
+          
+          final text = await _documentService.extractText(file.path!);
+          
+          setState(() => _isLoadingDocument = false);
+          
+          if (mounted) {
+            if (text.startsWith('Error:')) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(text)),
+              );
+            } else {
+              final preview = text.length > 200 ? '${text.substring(0, 200)}...' : text;
+              _showDocumentPreviewDialog(file.name, text, preview);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      setState(() => _isLoadingDocument = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking document: $e')),
+        );
+      }
+    }
+  }
+
+  void _showDocumentPreviewDialog(String fileName, String fullText, String preview) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(fileName),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 300,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Preview:',
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Text(
+                    preview,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportAsDocx(String content, String title) async {
+    try {
+      final suggestedName = title.replaceAll(RegExp(r'[^\w\s-]'), '').trim();
+      final result = await _documentGenerator.saveDocx(content, suggestedName.isEmpty ? 'document' : suggestedName);
+      
+      if (mounted) {
+        if (result == 'Cancelled') {
+          return;
+        } else if (result.startsWith('Error')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(result)),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Saved: $result')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error exporting: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -42,11 +158,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       }
       return;
-    }
-
-    if (_isGenerating) {
-      final llamaService = ref.read(llamaServiceProvider);
-      await llamaService.stop();
     }
 
     final historyState = ref.read(historyProvider);
@@ -101,6 +212,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _currentResponse = '';
         });
       }
+    }
+  }
+
+  Future<void> _stopGeneration() async {
+    final llamaService = ref.read(llamaServiceProvider);
+    await llamaService.stop();
+    if (_currentResponse.isNotEmpty && mounted) {
+      final historyState = ref.read(historyProvider);
+      final conversationId = historyState.currentConversationId;
+      if (conversationId != null) {
+        ref.read(historyProvider.notifier).addMessageToConversation(conversationId, 'assistant', _currentResponse);
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _isGenerating = false;
+        _currentResponse = '';
+      });
     }
   }
 
@@ -204,7 +333,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     final historyState = ref.watch(historyProvider);
     final modelState = ref.watch(modelStateProvider);
+    final tokenData = ref.watch(tokenStreamProvider);
+    final settings = ref.watch(settingsProvider).valueOrNull;
     final theme = Theme.of(context);
+
+    final currentConvId = historyState.currentConversationId;
+    if (_lastConversationId != null && currentConvId != null && _lastConversationId != currentConvId && !_isGenerating) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final llamaService = ref.read(llamaServiceProvider);
+        await llamaService.resetContext();
+        _lastConversationId = currentConvId;
+      });
+    }
+    _lastConversationId = currentConvId;
 
     final messages = historyState.currentConversation?.messages ?? [];
     final allMessages = [...messages];
@@ -325,13 +466,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
                 const SizedBox(width: 8),
                 FloatingActionButton(
-                  onPressed: _isGenerating ? null : _sendMessage,
+                  onPressed: _isGenerating ? _stopGeneration : _sendMessage,
+                  backgroundColor: _isGenerating 
+                      ? Theme.of(context).colorScheme.error 
+                      : Theme.of(context).colorScheme.primaryContainer,
                   child: _isGenerating
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
+                      ? const Icon(Icons.stop_rounded, color: Colors.white)
                       : const Icon(Icons.send_rounded),
                 ),
               ],
