@@ -13,3 +13,14 @@ pubspec.lock
 *.log
 .DS_Store
 Thumbs.db
+flutter/
+flutter_temp/
+cmake.zip
+ninja.zip
+jdk.zip
+jdk_extracted/
+jdk_temp/
+build.ps1
+build.bat
+nul
+.flutter-plugins-dependencies
