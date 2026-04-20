@@ -144,7 +144,7 @@ Log includes: app startup, settings changes, model loading, generation parameter
 
 - **Framework**: Flutter
 - **State Management**: Riverpod
-- **Model Runtime**: llama.cpp via llama_flutter_android
+- **Model Runtime**: llama.cpp via llamadart
 - **Storage**: SharedPreferences for settings and conversation history
 - **Architecture**: Clean Architecture (Presentation / Domain / Data layers)
 - **Logging**: Local file-based logging with detailed information

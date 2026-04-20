@@ -23,7 +23,7 @@ dependencies:
   path: ^1.9.0
   uuid: ^4.4.0
   intl: ^0.19.0
-  llama_flutter_android: ^0.1.1
+  llamadart: ^0.6.10
   dynamic_color: ^1.7.0
   google_fonts: ^6.2.1
   doc_text_extractor: ^2.1.0
