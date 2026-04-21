@@ -19,6 +19,7 @@ class ExportImportService {
         'repeatLastN': settings.repeatLastN,
         'chatTemplate': settings.chatTemplate,
         'autoDetectTemplate': settings.autoDetectTemplate,
+        'enableThinking': settings.enableThinking,
       };
 
       final toon = encode(data);
@@ -66,6 +67,7 @@ class ExportImportService {
         'repeatLastN': settings.repeatLastN,
         'chatTemplate': settings.chatTemplate,
         'autoDetectTemplate': settings.autoDetectTemplate,
+        'enableThinking': settings.enableThinking,
       };
 
       final toon = encode(data);
@@ -131,6 +133,7 @@ class ExportImportService {
       'repeatLastN',
       'chatTemplate',
       'autoDetectTemplate',
+      'enableThinking',
     ];
 
     final filteredData = <String, dynamic>{};

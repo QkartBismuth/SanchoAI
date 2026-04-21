@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:file_picker/file_picker.dart';
 import '../providers/history_provider.dart';
 import '../providers/model_provider.dart';
 import '../providers/settings_provider.dart';
@@ -25,6 +27,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isGenerating = false;
   String _currentResponse = '';
   String? _lastConversationId;
+  String? _selectedImagePath;
 
   @override
   void initState() {
@@ -62,7 +65,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     setState(() => _isGenerating = true);
     _currentResponse = '';
 
-    ref.read(historyProvider.notifier).addMessageToConversation(conversationId, 'user', text);
+    ref.read(historyProvider.notifier).addMessageToConversation(conversationId, 'user', text, imagePath: _selectedImagePath);
 
     _logService.logChatMessage('user', text);
     _logService.logGenerationStart(text);
@@ -75,21 +78,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         .toList() ?? [];
 
     try {
-      await for (final chunk in llamaService.generateStream(
-        text, 
-        history: history,
-        temperature: settings?.temperature,
-        maxTokens: settings?.maxTokens,
-        topP: settings?.topP,
-        topK: settings?.topK,
-        repeatPenalty: settings?.repeatPenalty,
-        repeatLastN: settings?.repeatLastN,
-      )) {
+      if (_selectedImagePath != null) {
+        final result = await llamaService.generateWithImage(
+          imagePath: _selectedImagePath!,
+          message: text,
+          history: history,
+          temperature: settings?.temperature,
+          maxTokens: settings?.maxTokens,
+          topP: settings?.topP,
+          topK: settings?.topK,
+          repeatPenalty: settings?.repeatPenalty,
+          repeatLastN: settings?.repeatLastN,
+        );
         if (mounted) {
           setState(() {
-            _currentResponse += chunk;
+            _currentResponse = result;
+            _selectedImagePath = null;
           });
-          _scrollToBottom();
+        }
+      } else {
+        await for (final chunk in llamaService.generateStream(
+          text, 
+          history: history,
+          temperature: settings?.temperature,
+          maxTokens: settings?.maxTokens,
+          topP: settings?.topP,
+          topK: settings?.topK,
+          repeatPenalty: settings?.repeatPenalty,
+          repeatLastN: settings?.repeatLastN,
+        )) {
+          if (mounted) {
+            setState(() {
+              _currentResponse += chunk;
+            });
+            _scrollToBottom();
+          }
         }
       }
       
@@ -110,6 +133,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         setState(() {
           _isGenerating = false;
           _currentResponse = '';
+          _selectedImagePath = null;
         });
       }
     }
@@ -130,6 +154,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _isGenerating = false;
         _currentResponse = '';
       });
+    }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+      
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        if (file.path != null) {
+          setState(() {
+            _selectedImagePath = file.path;
+          });
+          final message = 'What is in this image?';
+          _controller.text = message;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error picking image: $e');
     }
   }
 
@@ -329,6 +375,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               onContinue: isLastAssistant && !_isGenerating && modelState.status == ModelStatus.ready
                                   ? _continueMessage
                                   : null,
+                              enableThinking: settings?.enableThinking ?? true,
                             );
                           },
                         ),
@@ -348,6 +395,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
             child: Row(
               children: [
+                IconButton(
+                  icon: const Icon(Icons.image_rounded),
+                  onPressed: modelState.hasMultimodal ? _pickImage : null,
+                  tooltip: modelState.hasMultimodal ? 'Attach Image' : 'Multimodal not loaded',
+                ),
+                if (_selectedImagePath != null) ...[
+                  Container(
+                    width: 48,
+                    height: 48,
+                    margin: const EdgeInsets.only(right: 4),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      image: DecorationImage(
+                        image: FileImage(File(_selectedImagePath!)),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    child: GestureDetector(
+                      onTap: () => setState(() => _selectedImagePath = null),
+                      child: Align(
+                        alignment: Alignment.topRight,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.close, size: 14, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
                 Expanded(
                   child: TextField(
                     controller: _controller,
@@ -622,6 +702,7 @@ class _MessageBubble extends StatelessWidget {
   final VoidCallback? onDeleteSubsequent;
   final VoidCallback onCopy;
   final VoidCallback? onContinue;
+  final bool enableThinking;
 
   const _MessageBubble({
     required this.message,
@@ -630,16 +711,100 @@ class _MessageBubble extends StatelessWidget {
     this.onDeleteSubsequent,
     required this.onCopy,
     this.onContinue,
+    this.enableThinking = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final hasImage = message.imagePath != null && message.imagePath!.isNotEmpty;
+    
+    String content = message.content;
+    String? thinking;
+    String? channel;
+    
+    if (enableThinking) {
+      final thinkingRegex = RegExp(r'<\|thinking\|>([\s\S]*?)<\|thinking\|>');
+      final match = thinkingRegex.firstMatch(content);
+      if (match != null) {
+        thinking = match.group(1);
+        content = content.replaceAll(thinkingRegex, '');
+      }
+      
+      final channelRegex = RegExp(r'<\|channel\|>([\s\S]*?)<\|channel\|>');
+      final channelMatch = channelRegex.firstMatch(content);
+      if (channelMatch != null) {
+        channel = channelMatch.group(1);
+        content = content.replaceAll(channelRegex, '');
+      }
+    }
+    
     return GestureDetector(
       onLongPress: () => _showContextMenu(context),
       child: Column(
         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
+          if (enableThinking && ((thinking != null && thinking.trim().isNotEmpty) || (channel != null && channel.trim().isNotEmpty)))
+            Container(
+              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+              margin: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (thinking != null && thinking.trim().isNotEmpty) ...[
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.lightbulb_outline, size: 14, color: theme.colorScheme.secondary),
+                        const SizedBox(width: 4),
+                        Text('Thinking', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.colorScheme.secondary)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(thinking.trim(), style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: theme.colorScheme.onSurfaceVariant)),
+                  ],
+                  if (channel != null && channel.trim().isNotEmpty) ...[
+                    if (thinking != null && thinking.trim().isNotEmpty) const SizedBox(height: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.broadcast_on_personal, size: 14, color: theme.colorScheme.tertiary),
+                        const SizedBox(width: 4),
+                        Text('Channel', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.colorScheme.tertiary)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(channel.trim(), style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: theme.colorScheme.onSurfaceVariant)),
+                  ],
+                ],
+              ),
+            ),
+          if (hasImage)
+            Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.75,
+                maxHeight: 200,
+              ),
+              margin: const EdgeInsets.only(bottom: 4),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(
+                  File(message.imagePath!),
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Container(
+                    padding: const EdgeInsets.all(16),
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    child: const Icon(Icons.broken_image),
+                  ),
+                ),
+              ),
+            ),
           Align(
             alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
             child: Container(
@@ -652,17 +817,19 @@ class _MessageBubble extends StatelessWidget {
                     : theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: isUser
-                  ? Text(message.content, style: TextStyle(color: theme.colorScheme.onPrimary))
-                  : MarkdownBody(
-                      data: message.content,
-                      styleSheet: MarkdownStyleSheet(
-                        p: theme.textTheme.bodyMedium,
-                        code: theme.textTheme.bodySmall?.copyWith(
-                          backgroundColor: theme.colorScheme.surfaceContainerHighest,
+              child: content.trim().isEmpty
+                  ? Text('(No response)', style: TextStyle(fontStyle: FontStyle.italic, color: theme.colorScheme.outline))
+                  : isUser
+                      ? Text(content, style: TextStyle(color: theme.colorScheme.onPrimary))
+                      : MarkdownBody(
+                          data: content.trim(),
+                          styleSheet: MarkdownStyleSheet(
+                            p: theme.textTheme.bodyMedium,
+                            code: theme.textTheme.bodySmall?.copyWith(
+                              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
             ),
           ),
             if (!isUser && onContinue != null)

@@ -104,6 +104,11 @@ class SettingsNotifier extends StateNotifier<AsyncValue<AppSettings>> {
     await updateSettings(current.copyWith(autoDetectTemplate: autoDetect));
   }
 
+  Future<void> setEnableThinking(bool enable) async {
+    final current = state.valueOrNull ?? AppSettings();
+    await updateSettings(current.copyWith(enableThinking: enable));
+  }
+
   Future<void> resetGenerationSettings() async {
     final current = state.valueOrNull ?? AppSettings();
     await updateSettings(current.copyWith(

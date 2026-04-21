@@ -152,6 +152,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       repeatLastN: imported['repeatLastN'] ?? settings.repeatLastN,
       chatTemplate: imported['chatTemplate'] ?? settings.chatTemplate,
       autoDetectTemplate: imported['autoDetectTemplate'] ?? settings.autoDetectTemplate,
+      enableThinking: imported['enableThinking'] ?? settings.enableThinking,
     );
 
     await ref.read(settingsProvider.notifier).updateSettings(newSettings);
@@ -322,6 +323,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               ),
                             ],
                           ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.image_rounded),
+                        title: const Text('Multimodal Projector'),
+                        subtitle: Text(s.mmprojPath.isEmpty ? 'Not selected (optional)' : s.mmprojPath.split('/').last),
+                        trailing: s.mmprojPath.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () => ref.read(settingsProvider.notifier).setMmprojPath(''),
+                              )
+                            : null,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _pickMmprojFile(context, ref),
+                            icon: const Icon(Icons.folder_open_rounded),
+                            label: Text(s.mmprojPath.isEmpty ? 'Select MMPRoJ' : 'Change MMPRoJ'),
+                          ),
                         ),
                       ),
                     ],
@@ -544,6 +575,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           value: s.autoDetectTemplate,
                           onChanged: (v) => ref.read(settingsProvider.notifier).setAutoDetectTemplate(v),
                         ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Enable Thinking'),
+                          subtitle: const Text('Show thinking in response for supported models'),
+                          value: s.enableThinking,
+                          onChanged: (v) => ref.read(settingsProvider.notifier).setEnableThinking(v),
+                        ),
                       ],
                     ),
                   ),
@@ -720,6 +758,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _cancelGeneration(WidgetRef ref) async {
     final service = ref.read(llamaServiceProvider);
     await service.stop();
+  }
+
+  Future<void> _pickMmprojFile(BuildContext context, WidgetRef ref) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+      );
+      
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        if (file.path != null) {
+          await ref.read(settingsProvider.notifier).setMmprojPath(file.path!);
+          
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('MMPRoJ selected: ${file.name}')),
+            );
+          }
+          
+          final init = ref.read(initializeModelProvider);
+          await init();
+          
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Model reloaded with multimodal projector')),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error picking mmproj file: $e');
+    }
   }
 }
 

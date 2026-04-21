@@ -13,6 +13,7 @@ class AppSettings {
   String language;
   String chatTemplate;
   bool autoDetectTemplate;
+  bool enableThinking;
 
   AppSettings({
     this.modelPath = '',
@@ -29,6 +30,7 @@ class AppSettings {
     this.language = 'en',
     this.chatTemplate = 'none',
     this.autoDetectTemplate = true,
+    this.enableThinking = true,
   });
 
   Map<String, dynamic> toJson() => {
@@ -46,6 +48,7 @@ class AppSettings {
     'language': language,
     'chatTemplate': chatTemplate,
     'autoDetectTemplate': autoDetectTemplate,
+    'enableThinking': enableThinking,
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -63,6 +66,7 @@ class AppSettings {
     language: json['language'] ?? 'en',
     chatTemplate: json['chatTemplate'] ?? 'none',
     autoDetectTemplate: json['autoDetectTemplate'] ?? true,
+    enableThinking: json['enableThinking'] ?? true,
   );
 
   AppSettings copyWith({
@@ -80,6 +84,7 @@ class AppSettings {
     String? language,
     String? chatTemplate,
     bool? autoDetectTemplate,
+    bool? enableThinking,
   }) => AppSettings(
     modelPath: modelPath ?? this.modelPath,
     mmprojPath: mmprojPath ?? this.mmprojPath,
@@ -95,5 +100,6 @@ class AppSettings {
     language: language ?? this.language,
     chatTemplate: chatTemplate ?? this.chatTemplate,
     autoDetectTemplate: autoDetectTemplate ?? this.autoDetectTemplate,
+    enableThinking: enableThinking ?? this.enableThinking,
   );
 }

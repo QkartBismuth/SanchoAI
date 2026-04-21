@@ -516,9 +516,14 @@ class LlamaService {
     _updateState(_state.copyWith(status: ModelStatus.generating));
     
     try {
-      final messages = <LlamaContentPart>[
-        LlamaImageContent(path: imagePath),
-        LlamaTextContent(message),
+      final messages = [
+        LlamaChatMessage.withContent(
+          role: LlamaChatRole.user,
+          content: [
+            LlamaImageContent(path: imagePath),
+            LlamaTextContent(message),
+          ],
+        ),
       ];
       
       final params = GenerationParams(
@@ -530,7 +535,7 @@ class LlamaService {
       );
       
       String result = '';
-      await for (final chunk in _session!.create(messages, params: params)) {
+      await for (final chunk in _engine!.create(messages, params: params)) {
         final content = chunk.choices.first.delta.content;
         if (content != null) {
           result += content;

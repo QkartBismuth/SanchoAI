@@ -7,12 +7,14 @@ class Message {
   final String role;
   final String content;
   final DateTime timestamp;
+  final String? imagePath;
 
   Message({
     required this.id,
     required this.role,
     required this.content,
     required this.timestamp,
+    this.imagePath,
   });
 
   Map<String, dynamic> toJson() => {
@@ -20,6 +22,7 @@ class Message {
     'role': role,
     'content': content,
     'timestamp': timestamp.toIso8601String(),
+    'imagePath': imagePath,
   };
 
   factory Message.fromJson(Map<String, dynamic> json) => Message(
@@ -27,6 +30,7 @@ class Message {
     role: json['role'] ?? 'user',
     content: json['content'] ?? '',
     timestamp: DateTime.parse(json['timestamp'] ?? DateTime.now().toIso8601String()),
+    imagePath: json['imagePath'],
   );
 
   Message copyWith({
@@ -34,11 +38,13 @@ class Message {
     String? role,
     String? content,
     DateTime? timestamp,
+    String? imagePath,
   }) => Message(
     id: id ?? this.id,
     role: role ?? this.role,
     content: content ?? this.content,
     timestamp: timestamp ?? this.timestamp,
+    imagePath: imagePath ?? this.imagePath,
   );
 }
 
@@ -372,7 +378,7 @@ class HistoryNotifier extends StateNotifier<HistoryState> {
     await addMessageToConversation(currentId, role, content);
   }
 
-  Future<void> addMessageToConversation(String conversationId, String role, String content) async {
+  Future<void> addMessageToConversation(String conversationId, String role, String content, {String? imagePath}) async {
     if (_storage == null) return;
 
     final convIndex = state.conversations.indexWhere(
@@ -386,6 +392,7 @@ class HistoryNotifier extends StateNotifier<HistoryState> {
       role: role,
       content: content,
       timestamp: DateTime.now(),
+      imagePath: imagePath,
     );
 
     String title = conv.title;
