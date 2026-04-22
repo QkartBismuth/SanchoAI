@@ -26,6 +26,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _logService = LogService.instance;
   bool _isGenerating = false;
   String _currentResponse = '';
+  String _currentThinking = '';
   String? _lastConversationId;
   String? _selectedImagePath;
 
@@ -62,8 +63,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (conversationId == null) return;
 
     _controller.clear();
-    setState(() => _isGenerating = true);
-    _currentResponse = '';
+    setState(() {
+      _isGenerating = true;
+      _currentResponse = '';
+      _currentThinking = '';
+    });
 
     ref.read(historyProvider.notifier).addMessageToConversation(conversationId, 'user', text, imagePath: _selectedImagePath);
 
@@ -133,6 +137,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         setState(() {
           _isGenerating = false;
           _currentResponse = '';
+          _currentThinking = '';
           _selectedImagePath = null;
         });
       }
@@ -295,7 +300,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     final messages = historyState.currentConversation?.messages ?? [];
     final allMessages = [...messages];
+    
+    Widget? realtimeThinkingWidget;
+    String currentDisplayContent = _currentResponse;
+    
     if (_currentResponse.isNotEmpty) {
+      if (settings?.enableThinking ?? true) {
+        final thinkingRegex = RegExp(r'<\|thinking\|>([\s\S]*?)<\|thinking\|>');
+        final match = thinkingRegex.firstMatch(_currentResponse);
+        if (match != null) {
+          _currentThinking = match.group(1) ?? '';
+          currentDisplayContent = _currentResponse.replaceAll(thinkingRegex, '');
+        }
+      }
+      
       allMessages.add(Message(
         id: 'temp',
         role: 'assistant',
@@ -335,7 +353,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Expanded(
             child: historyState.isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : allMessages.isEmpty
+                : allMessages.isEmpty && _currentThinking.isEmpty
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -354,31 +372,73 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           ],
                         ),
                       )
-                    : ScrollConfiguration(
-                        behavior: _GlowScrollBehavior(),
-                        child: ListView.builder(
-                          controller: _scrollController,
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.all(16),
-                          itemCount: allMessages.length,
-                          itemBuilder: (context, index) {
-                            final msg = allMessages[index];
-                            final isLastAssistant = index == allMessages.length - 1 && msg.role == 'assistant';
-                            return _MessageBubble(
-                              message: msg,
-                              isUser: msg.role == 'user',
-                              onDelete: () => _showDeleteMessageDialog(msg),
-                              onDeleteSubsequent: msg.role == 'user' 
-                                  ? () => _showDeleteSubsequentDialog(msg)
-                                  : null,
-                              onCopy: () => _copyMessage(msg.content),
-                              onContinue: isLastAssistant && !_isGenerating && modelState.status == ModelStatus.ready
-                                  ? _continueMessage
-                                  : null,
-                              enableThinking: settings?.enableThinking ?? true,
-                            );
-                          },
-                        ),
+                    : Column(
+                        children: [
+                          if (_currentThinking.isNotEmpty && (settings?.enableThinking ?? true))
+                            Container(
+                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                              margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: theme.colorScheme.secondary.withValues(alpha: 0.3)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: theme.colorScheme.secondary,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text('Thinking...', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.colorScheme.secondary)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _currentThinking.trim(),
+                                    style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: theme.colorScheme.onSurfaceVariant),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          Expanded(
+                            child: ScrollConfiguration(
+                              behavior: _GlowScrollBehavior(),
+                              child: ListView.builder(
+                                controller: _scrollController,
+                                physics: const BouncingScrollPhysics(),
+                                padding: EdgeInsets.only(left: 16, right: 16, top: allMessages.isEmpty ? 16 : 0, bottom: 16),
+                                itemCount: allMessages.length,
+                                itemBuilder: (context, index) {
+                                  final msg = allMessages[index];
+                                  final isLastAssistant = index == allMessages.length - 1 && msg.role == 'assistant';
+                                  return _MessageBubble(
+                                    message: msg,
+                                    isUser: msg.role == 'user',
+                                    onDelete: () => _showDeleteMessageDialog(msg),
+                                    onDeleteSubsequent: msg.role == 'user' 
+                                        ? () => _showDeleteSubsequentDialog(msg)
+                                        : null,
+                                    onCopy: () => _copyMessage(msg.content),
+                                    onContinue: isLastAssistant && !_isGenerating && modelState.status == ModelStatus.ready
+                                        ? _continueMessage
+                                        : null,
+                                    enableThinking: settings?.enableThinking ?? true,
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
           ),
           Container(

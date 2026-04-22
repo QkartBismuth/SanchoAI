@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:llamadart/llamadart.dart';
 import '../../domain/entities/model_state.dart';
+import 'background_service.dart';
 
 class TokenCount {
   final int promptTokens;
@@ -36,6 +37,10 @@ class LlamaService {
   void setSystemPrompt(String prompt) {
     _systemPrompt = prompt;
     debugPrint('System prompt set to: $_systemPrompt');
+    if (_engine != null && _engine!.isReady) {
+      _session = ChatSession(_engine!, systemPrompt: _systemPrompt);
+      debugPrint('ChatSession recreated with new system prompt');
+    }
   }
 
   void setChatTemplate(String template) {
@@ -145,6 +150,8 @@ class LlamaService {
         status: ModelStatus.ready,
         hasMultimodal: _hasMmproj,
       ));
+      
+      BackgroundService.instance.start();
     } catch (e, st) {
       debugPrint('Error loading model: $e');
       debugPrint('Stack trace: $st');
@@ -556,6 +563,7 @@ class LlamaService {
       _engine = null;
       _session = null;
       _updateState(const ModelState(status: ModelStatus.idle));
+      BackgroundService.instance.stop();
     } catch (_) {}
   }
 

@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     
     <application
         android:label="Sancho.AI"
@@ -40,6 +41,11 @@
             android:name="flutterEmbedding"
             android:value="2" />
         
+        <service
+            android:name=".AppLifecycleService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false" />
+            
         <service
             android:name="com.write4me.llama_flutter_android.InferenceService"
             android:foregroundServiceType="specialUse"
